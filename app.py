@@ -21,7 +21,8 @@ def init_db():
         service TEXT,
         banner TEXT,
         timestamp TEXT,
-        risk TEXT
+        risk TEXT,
+        explanation TEXT
     )
     """)
 
@@ -96,6 +97,19 @@ font-weight: bold;
 .low {
 color: #00ff9f;
 }
+
+.high {
+color: red;
+font-weight: bold;
+}
+
+.medium {
+color: orange;
+}
+
+.low {
+color: lightgreen;
+}
 </style>
 
 <script>
@@ -143,6 +157,7 @@ setInterval(updateProgress, 500);
 <th>Service</th>
 <th>Banner</th>
 <th>Risk</th>
+<th>Explanantion</th>
 </tr>
 
 {% for h in scans %}
@@ -153,17 +168,18 @@ setInterval(updateProgress, 500);
 <td>{{ h[3] }}</td>
 <td>{{ h[4] }}</td>
 <td>{{ h[5] }}</td>
-<td>
-    {% set risk = h[7] if h|length > 7 else "LOW" %}
 
-    {% if risk == "HIGH" %}
-        <span class="high">🔴 HIGH</span>
-    {% elif risk == "MEDIUM" %}
-        <span class="medium">🟠 MEDIUM</span>
+<td class="{{ h[7]|lower }}">
+    {% if h[7] == "HIGH" %}
+        🔴 HIGH
+    {% elif h[7] == "MEDIUM" %}
+        🟠 MEDIUM
     {% else %}
-        <span class="low">🟢 LOW</span>
+        🟢 LOW
     {% endif %}
 </td>
+
+<td>{{ h[8] }}</td>
 </tr>
 {% endfor %}
 
@@ -173,6 +189,7 @@ setInterval(updateProgress, 500);
 {% endfor %}
 
 {% endif %}
+
 
 <a href="/download">Download Report</a>
 
@@ -212,6 +229,18 @@ def scan_ports(target):
         53:"DNS",80:"HTTP",110:"POP3",143:"IMAP",443:"HTTPS"
     }
 
+    vulnerabilities = {
+        21: ("HIGH", "FTP sends data in plain text. Credentials can be intercepted."),
+        22: ("LOW", "SSH is secure but can be vulnerable to brute-force attacks."),
+        23: ("HIGH", "Telnet is insecure and transmits data in plain text."),
+        25: ("MEDIUM", "SMTP can be abused for spam or spoofing."),
+        53: ("LOW", "DNS is essential but can be used in amplification attacks."),
+        80: ("MEDIUM", "HTTP is unencrypted and vulnerable to sniffing."),
+        110: ("HIGH", "POP3 transmits credentials in plain text."),
+        143: ("MEDIUM", "IMAP may expose data if not secured."),
+        443: ("LOW", "HTTPS is secure but depends on proper configuration.")
+    }
+
     def scan_port(port):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -223,13 +252,16 @@ def scan_ports(target):
 
                 banner = grab_banner(target, port)
 
+                risk, explanation = vulnerabilities.get(port, ("UNKNOWN", "No data avaliable"))
+
                 results.append({
                     "ip": target,
                     "port": port,
                     "status": "Open",
                     "service": services.get(port,"Unknown"),
                     "banner": banner,
-                    "risk": get_risk_level(port)
+                    "risk": risk,
+                    "explanation": explanation
                 })
 
             s.close()
@@ -310,8 +342,8 @@ def save_results(target, results):
 
     for r in results:
         c.execute("""
-        INSERT INTO scans (target, ip, port, status, service, banner, timestamp, risk)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO scans (target, ip, port, status, service, banner, timestamp, risk, explanation)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             target,
             r.get("ip"),
@@ -320,7 +352,8 @@ def save_results(target, results):
             r.get("service"),
             r.get("banner"),
             scan_id,
-            r.get("risk")
+            r.get("risk"),
+            r.get("explanation")
         ))
 
     conn.commit()
@@ -332,7 +365,7 @@ def get_history():
     c = conn.cursor()
 
     c.execute("""
-    SELECT target, ip, port, status, service, banner, timestamp 
+    SELECT target, ip, port, status, service, banner, timestamp, risk, explanation
     FROM scans
     ORDER BY timestamp DESC
     """)
@@ -362,10 +395,12 @@ def download():
         json.dump(scan_results,f,indent=4)
 
     return send_file("report.json", as_attachment=True)
+import os
 
 
 if __name__=="__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
 
