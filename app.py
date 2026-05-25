@@ -395,6 +395,7 @@ def download():
         json.dump(scan_results,f,indent=4)
 
     return send_file("report.json", as_attachment=True)
+
 import os
 
 
