@@ -11,6 +11,8 @@ def init_db():
     conn = sqlite3.connect("scans.db")
     c = conn.cursor()
 
+    c.execute("DROP TABLE IF EXISTS scans")
+
     c.execute("""
     CREATE TABLE IF NOT EXISTS scans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
